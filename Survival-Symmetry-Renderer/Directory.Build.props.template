@@ -1,6 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <!-- Optional local override. Leave blank to use your own build environment/setup. -->
-    <Bin64></Bin64>
-  </PropertyGroup>
-</Project>
