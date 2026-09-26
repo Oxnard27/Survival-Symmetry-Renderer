@@ -14,7 +14,7 @@ The plugin is intentionally **render-only**. It does not handle block placement,
 
 - Space Engineers 1
 - Pulsar
-- Survival Symmetry Workshop mod
+- Survival Symmetry Workshop mod from: https://steamcommunity.com/sharedfiles/filedetails/?id=3775914515
 
 ## Multiplayer
 
