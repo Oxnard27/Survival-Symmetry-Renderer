@@ -10,5 +10,5 @@
     <Directory>ClientPlugin</Directory>
   </SourceDirectories>
   <Hidden>false</Hidden>
-  <Commit>REPLACE_WITH_COMMIT_HASH_AFTER_UPLOAD</Commit>
+  <Commit>01241c31b805c5fcc9efa4a408fc9f5e5541fd06</Commit>
 </PluginData>
