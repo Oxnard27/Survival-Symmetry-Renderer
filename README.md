@@ -14,7 +14,7 @@ The plugin is intentionally **render-only**. It does not handle block placement,
 
 - Space Engineers 1
 - Pulsar
-- Survival Symmetry Workshop mod from: https://steamcommunity.com/sharedfiles/filedetails/?id=3775914515
+- Survival Symmetry Workshop mod
 
 ## Multiplayer
 
@@ -35,3 +35,7 @@ Please report renderer-specific problems through this repository's GitHub Issues
 ## AI-assisted development
 
 AI-assisted development was used during development and testing.
+
+## Review fix
+
+Restores mirrored gizmo state after drawing so vanilla painting/input cannot use the temporary render-only symmetry state. Renderer activates only when Survival Symmetry Workshop ID 3775914515 is loaded.

@@ -1,9 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using NLog;
 using Sandbox.Game.Entities;
+using Sandbox.Game.Entities.Cube;
+using Sandbox.Game.World;
 using Sandbox.ModAPI;
 using VRage.Plugins;
 
@@ -28,7 +31,6 @@ namespace SurvivalSymmetryRenderer
             LogManager.GetLogger("SurvivalSymmetryRenderer");
 
         private Harmony harmony;
-        private bool updateLogged;
 
         public void Init(object gameInstance)
         {
@@ -43,14 +45,7 @@ namespace SurvivalSymmetryRenderer
             Log.Info("[SurvivalSymmetry Renderer] Harmony patches applied");
         }
 
-        public void Update()
-        {
-            if (!updateLogged)
-            {
-                updateLogged = true;
-                Log.Info("[SurvivalSymmetry Renderer] Update entered");
-            }
-        }
+        public void Update() { }
 
         public void Dispose()
         {
@@ -71,6 +66,48 @@ namespace SurvivalSymmetryRenderer
 
         internal static FieldInfo UseSymmetryField;
         internal static PropertyInfo UseSymmetryProperty;
+        internal const ulong WorkshopModId = 3775914515UL;
+        internal static readonly AccessTools.FieldRef<MyCubeBuilder, MyCubeBuilderGizmo> Gizmo =
+            AccessTools.FieldRefAccess<MyCubeBuilder, MyCubeBuilderGizmo>("m_gizmo");
+
+        // Fail closed if the Workshop mod is not present. Checked against the
+        // active session rather than a client setting or a persisted grid plane.
+        internal static bool WorkshopModLoaded()
+        {
+            try
+            {
+                var session = MySession.Static;
+                if (session == null)
+                    return false;
+
+                // Reflection keeps this compatible with both Pulsar source targets.
+                PropertyInfo modsProperty = AccessTools.Property(session.GetType(), "Mods");
+                FieldInfo modsField = AccessTools.Field(session.GetType(), "Mods");
+                object mods = modsProperty != null ? modsProperty.GetValue(session, null)
+                    : modsField != null ? modsField.GetValue(session) : null;
+                IEnumerable entries = mods as IEnumerable;
+                if (entries == null)
+                    return false;
+
+                foreach (object mod in entries)
+                {
+                    if (mod == null)
+                        continue;
+                    PropertyInfo idProperty = AccessTools.Property(mod.GetType(), "PublishedFileId");
+                    FieldInfo idField = AccessTools.Field(mod.GetType(), "PublishedFileId");
+                    object id = idProperty != null ? idProperty.GetValue(mod, null)
+                        : idField != null ? idField.GetValue(mod) : null;
+                    if (id != null && String.Equals(Convert.ToString(id),
+                        WorkshopModId.ToString(), StringComparison.Ordinal))
+                        return true;
+                }
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.Debug(e, "[SurvivalSymmetry Renderer] Mod detection failed");
+            }
+            return false;
+        }
 
         internal static bool DrawActive
         {
@@ -119,6 +156,9 @@ namespace SurvivalSymmetryRenderer
         [HarmonyPrefix]
         private static void Prefix()
         {
+            if (!RendererState.WorkshopModLoaded())
+                return;
+
             RendererState.DrawDepth++;
 
             if (!logged)
@@ -129,11 +169,37 @@ namespace SurvivalSymmetryRenderer
         }
 
         [HarmonyFinalizer]
-        private static Exception Finalizer(Exception __exception)
+        private static Exception Finalizer(MyCubeBuilder __instance, Exception __exception)
         {
             if (RendererState.DrawDepth > 0)
                 RendererState.DrawDepth--;
 
+            // Draw temporarily enables vanilla mirrored gizmo spaces. Their Enabled
+            // state survives Draw and is used by vanilla middle-click painting.
+            // Disable them once the render data has been collected, preserving
+            // the rendered ghost but preventing gameplay/input side effects.
+            if (RendererState.DrawDepth == 0 && __instance != null)
+            {
+                try
+                {
+                    if (!__instance.UseSymmetry)
+                    {
+                        MyCubeBuilderGizmo gizmo = RendererState.Gizmo(__instance);
+                        if (gizmo != null)
+                        {
+                            foreach (var space in gizmo.Spaces)
+                            {
+                                if (space.SymmetryPlane != MySymmetrySettingModeEnum.Disabled)
+                                    space.Enabled = false;
+                            }
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    Plugin.Log.Error(e, "[SurvivalSymmetry Renderer] Failed to restore gizmo state");
+                }
+            }
             return __exception;
         }
     }
@@ -158,7 +224,7 @@ namespace SurvivalSymmetryRenderer
         [HarmonyPostfix]
         private static void Postfix(MyCubeBuilder __instance, ref bool __result)
         {
-            if (!RendererState.DrawActive)
+            if (!RendererState.DrawActive || !RendererState.WorkshopModLoaded())
                 return;
 
             // Respect the CubeBuilder's own backing state. The Workshop mod already
@@ -178,44 +244,4 @@ namespace SurvivalSymmetryRenderer
         }
     }
 
-    /// <summary>
-    /// Tracks whether Keen's own block-model staging function is
-    /// reached after the Draw-only UseSymmetry override.
-    /// </summary>
-    [HarmonyPatch]
-    internal static class AddFastBuildModelsPatch
-    {
-        private static bool logged;
-
-        private static IEnumerable<MethodBase> TargetMethods()
-        {
-            MethodInfo[] methods = typeof(MyCubeBuilder).GetMethods(
-                BindingFlags.Instance |
-                BindingFlags.Static |
-                BindingFlags.Public |
-                BindingFlags.NonPublic);
-
-            for (int i = 0; i < methods.Length; i++)
-            {
-                if (String.Equals(
-                    methods[i].Name,
-                    "AddFastBuildModels",
-                    StringComparison.Ordinal))
-                {
-                    yield return methods[i];
-                }
-            }
-        }
-
-        [HarmonyPrefix]
-        private static void Prefix()
-        {
-            if (!RendererState.DrawActive || logged)
-                return;
-
-            logged = true;
-            Plugin.Log.Info(
-                "[SurvivalSymmetry Renderer] AddFastBuildModels reached during Draw");
-        }
-    }
 }
